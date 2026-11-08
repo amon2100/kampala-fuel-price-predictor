@@ -20,5 +20,17 @@ The raw data includes:
 
 ## Getting started
 
-Open the notebooks in `notebooks/` with Jupyter or VS Code and use the files
-in `data/raw/` as inputs.
+Install the notebook dependencies into the interpreter selected by VS Code:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+Then open the notebooks in `notebooks/` with Jupyter or VS Code and use the
+files in `data/raw/` as inputs. If VS Code still reports a dead kernel, select
+the same interpreter where the dependencies were installed:
+
+1. Open the Command Palette (`Ctrl+Shift+P`).
+2. Run **Python: Select Interpreter**.
+3. Choose the interpreter used for the installation above.
+4. Restart the notebook kernel.
