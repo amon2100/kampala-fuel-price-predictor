@@ -1,9 +1,10 @@
+
 from pathlib import Path
 import pandas as pd
+import numpy as np
 
-PROJECT_ROOT = Path(
-    r"C:\Users\CORE !5\Downloads\kampala-fuel-price-predictor"
-)
+# Automatically locate the project root.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
 INCOMING_DIR = PROJECT_ROOT / "data" / "incoming"
@@ -23,6 +24,8 @@ REQUIRED_COLUMNS = [
     "diesel_shs_per_litre"
 ]
 
+PRICE_COLUMNS = REQUIRED_COLUMNS[1:]
+
 
 def load_and_validate(file_path):
     df = pd.read_csv(file_path)
@@ -35,7 +38,8 @@ def load_and_validate(file_path):
     if missing:
         raise ValueError(f"Missing columns: {missing}")
 
-    df = df[REQUIRED_COLUMNS].copy()
+    # Preserve additional columns.
+    df = df.copy()
 
     df["month"] = pd.to_datetime(
         df["month"].astype(str),
@@ -46,18 +50,21 @@ def load_and_validate(file_path):
         df["month"].dt.to_period("M").dt.to_timestamp()
     )
 
-    for col in REQUIRED_COLUMNS[1:]:
+    if df["month"].isna().any():
+        raise ValueError("Invalid or missing month values.")
+
+    for col in PRICE_COLUMNS:
         df[col] = pd.to_numeric(
             df[col], errors="coerce"
         )
 
-    if df["month"].isna().any():
-        raise ValueError("Invalid or missing month values.")
-
-    if df[REQUIRED_COLUMNS[1:]].isna().any().any():
+    if df[PRICE_COLUMNS].isna().any().any():
         raise ValueError("Missing or non-numeric fuel prices.")
 
-    if (df[REQUIRED_COLUMNS[1:]] <= 0).any().any():
+    if not np.isfinite(df[PRICE_COLUMNS].to_numpy()).all():
+        raise ValueError("Infinite fuel prices found.")
+
+    if (df[PRICE_COLUMNS] <= 0).any().any():
         raise ValueError("Zero or negative fuel prices found.")
 
     if df["month"].duplicated().any():
@@ -66,58 +73,114 @@ def load_and_validate(file_path):
     return df.sort_values("month").reset_index(drop=True)
 
 
+def check_historical_revisions(master, incoming):
+    existing_months = set(master["month"])
+    incoming_months = set(incoming["month"])
+
+    overlap = existing_months.intersection(incoming_months)
+
+    revisions = []
+
+    for month in overlap:
+        old_row = master.loc[
+            master["month"] == month
+        ].iloc[0]
+
+        new_row = incoming.loc[
+            incoming["month"] == month
+        ].iloc[0]
+
+        for col in PRICE_COLUMNS:
+            if old_row[col] != new_row[col]:
+                revisions.append(
+                    (
+                        month.strftime("%Y-%m"),
+                        col,
+                        old_row[col],
+                        new_row[col]
+                    )
+                )
+
+    return revisions
+
+
+def save_master_atomically(master):
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+
+    temporary_file = OUTPUT_FILE.with_suffix(".tmp")
+
+    master.to_csv(temporary_file, index=False)
+
+    # Replace the master only after the temporary file is written.
+    temporary_file.replace(OUTPUT_FILE)
+
+
 def update_master_dataset():
+
     if not HISTORICAL_FILE.exists():
         print("Historical UBOS dataset not found.")
         return
 
-    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-
     master = load_and_validate(HISTORICAL_FILE)
 
-    incoming_files = sorted(INCOMING_DIR.glob("*.csv"))
+    incoming_files = sorted(
+        INCOMING_DIR.glob("*.csv")
+    ) if INCOMING_DIR.exists() else []
 
     if not incoming_files:
         print("No incoming files available.")
-        print("Latest stored month:",
-              master["month"].max().strftime("%Y-%m"))
+        print(
+            "Latest stored month:",
+            master["month"].max().strftime("%Y-%m")
+        )
         print("No changes made.")
         return
 
-    for file in incoming_files:
-        print(f"\nPROCESSING: {file.name}")
-        print("-" * 50)
+    # Work on a temporary in-memory copy.
+    # The real master file is not changed until all files pass.
+    candidate = master.copy()
 
-        try:
+    incoming_months_seen = set()
+    total_new_records = 0
+
+    print("STARTING TRANSACTIONAL DATA UPDATE")
+    print("=" * 55)
+
+    try:
+        for file in incoming_files:
+
+            print(f"\nPROCESSING: {file.name}")
+            print("-" * 50)
+
             incoming = load_and_validate(file)
 
-            existing_months = set(master["month"])
-            incoming_months = set(incoming["month"])
-
-            overlap = existing_months.intersection(
-                incoming_months
+            # Prevent different incoming files from supplying
+            # conflicting or duplicate months.
+            duplicate_months = (
+                incoming_months_seen.intersection(
+                    set(incoming["month"])
+                )
             )
 
-            revisions = []
+            if duplicate_months:
+                months = sorted(
+                    month.strftime("%Y-%m")
+                    for month in duplicate_months
+                )
 
-            for month in overlap:
-                old_row = master.loc[
-                    master["month"] == month
-                ].iloc[0]
+                raise ValueError(
+                    f"Months appear in multiple incoming files: {months}"
+                )
 
-                new_row = incoming.loc[
-                    incoming["month"] == month
-                ].iloc[0]
+            incoming_months_seen.update(incoming["month"])
 
-                for col in REQUIRED_COLUMNS[1:]:
-                    if old_row[col] != new_row[col]:
-                        revisions.append(
-                            (month.strftime("%Y-%m"), col,
-                             old_row[col], new_row[col])
-                        )
+            revisions = check_historical_revisions(
+                candidate,
+                incoming
+            )
 
             if revisions:
-                print("REVIEW REQUIRED: Historical revisions found.")
+                print("HISTORICAL REVISION DETECTED")
 
                 for month, column, old, new in revisions:
                     print(
@@ -125,39 +188,72 @@ def update_master_dataset():
                         f"{old} -> {new}"
                     )
 
-                print("File not merged.")
-                continue
+                raise ValueError(
+                    "Historical revisions require manual review."
+                )
 
-            new_records = incoming[
+            existing_months = set(candidate["month"])
+
+            new_records = incoming.loc[
                 ~incoming["month"].isin(existing_months)
-            ]
+            ].copy()
 
             if new_records.empty:
                 print("No new months detected.")
                 continue
 
-            master = pd.concat(
-                [master, new_records],
-                ignore_index=True
+            # Combine columns without discarding additional fields.
+            candidate = pd.concat(
+                [candidate, new_records],
+                ignore_index=True,
+                sort=False
             )
 
-            master = master.sort_values(
+            candidate = candidate.sort_values(
                 "month"
             ).reset_index(drop=True)
 
-            master.to_csv(OUTPUT_FILE, index=False)
+            total_new_records += len(new_records)
 
-            print("NEW MONTHS ADDED:",
-                  len(new_records))
+            print("NEW MONTHS FOUND:", len(new_records))
 
-            print("LATEST MONTH:",
-                  master["month"].max().strftime("%Y-%m"))
+        # Final integrity checks before committing.
+        if candidate["month"].duplicated().any():
+            raise ValueError(
+                "Duplicate months detected in final dataset."
+            )
 
-            print("UPDATED MASTER SAVED:")
-            print(OUTPUT_FILE)
+        if total_new_records == 0:
+            print("\nNo new records to save.")
+            print("Master dataset remains unchanged.")
+            return
 
-        except Exception as error:
-            print("UPDATE REJECTED:", error)
+        # Commit only after every incoming file passes.
+        save_master_atomically(candidate)
+
+        print("\n" + "=" * 55)
+        print("DATA UPDATE COMMITTED SUCCESSFULLY")
+        print("=" * 55)
+
+        print("NEW RECORDS ADDED:", total_new_records)
+
+        print(
+            "LATEST MONTH:",
+            candidate["month"].max().strftime("%Y-%m")
+        )
+
+        print("MASTER DATASET SAVED:")
+        print(OUTPUT_FILE)
+
+        print("ALL INCOMING FILES PROCESSED SUCCESSFULLY.")
+
+    except Exception as error:
+        print("\n" + "=" * 55)
+        print("TRANSACTION ABORTED")
+        print("=" * 55)
+
+        print("REASON:", error)
+        print("No changes were committed to the master dataset.")
 
 
 if __name__ == "__main__":
