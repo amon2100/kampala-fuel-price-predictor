@@ -1,5 +1,6 @@
 ipykernel
 nbformat
+gradio
 matplotlib
 numpy
 pandas
