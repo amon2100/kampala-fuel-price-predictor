@@ -128,13 +128,23 @@ def update_master_dataset():
     ) if INCOMING_DIR.exists() else []
 
     if not incoming_files:
-        print("No incoming files available.")
-        print(
-            "Latest stored month:",
-            master["month"].max().strftime("%Y-%m")
-        )
+
+    print("No incoming files available.")
+
+    if not OUTPUT_FILE.exists():
+        save_master_atomically(master)
+
+        print("INITIAL MASTER DATASET CREATED.")
+        print("RECORDS:", len(master))
+        print("LATEST MONTH:",
+              master["month"].max().strftime("%Y-%m"))
+        print("SAVED TO:", OUTPUT_FILE)
+
+    else:
+        print("MASTER DATASET ALREADY EXISTS.")
         print("No changes made.")
-        return
+
+    return
 
     # Work on a temporary in-memory copy.
     # The real master file is not changed until all files pass.
