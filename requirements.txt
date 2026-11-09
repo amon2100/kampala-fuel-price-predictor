@@ -1,4 +1,5 @@
 ipykernel
+nbformat
 matplotlib
 numpy
 pandas
