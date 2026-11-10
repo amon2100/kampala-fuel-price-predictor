@@ -9,6 +9,12 @@ The project is intended as a practical, data-driven view of fuel-market trends.
 Forecasts are estimates and should not be treated as guaranteed prices or
 financial advice.
 
+## Live application
+
+Explore the deployed dashboard:
+
+[🌐 Explore the live application](https://kampala-fuel-price-predictor.onrender.com)
+
 ## What it does
 
 - Maintains a processed master dataset of historical fuel prices.
