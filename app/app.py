@@ -5,6 +5,7 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 import gradio as gr
+import os
 
 
 # ============================================================
@@ -2004,23 +2005,14 @@ if __name__ == "__main__":
     print("Starting Gradio dashboard...")
 
     demo.launch(
-
-        server_name="127.0.0.1",
-
+        server_name="0.0.0.0",
+        server_port=int(os.environ["PORT"]) if os.environ.get("PORT") else None,
         share=False,
-
         show_error=True,
-
         theme=gr.themes.Soft(
-
             primary_hue="red",
-
             secondary_hue="yellow",
-
             neutral_hue="slate"
-
         ),
-
         css=CSS
-
     )
