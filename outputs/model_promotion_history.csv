@@ -1,3 +1,5 @@
 timestamp,fuel,latest_data_month,observations,candidate_mae,baseline_mae,improvement_percent,identical_to_production,decision,reason
 2026-11-09T20:22:08,petrol,2026-09,60,75.23,92.67,18.82,True,UNCHANGED,Candidate is identical to production model.
 2026-11-09T20:22:09,diesel,2026-09,60,97.82,105.83,7.57,True,UNCHANGED,Candidate is identical to production model.
+2026-11-10T04:10:53,petrol,2026-10,61,77.78,93.54,16.85,False,APPROVED - DRY RUN,Candidate passed validation; promotion disabled.
+2026-11-10T04:10:53,diesel,2026-10,61,107.96,113.46,4.85,False,APPROVED - DRY RUN,Candidate passed validation; promotion disabled.
