@@ -903,12 +903,6 @@ body {
 # ============================================================
 
 with gr.Blocks(
-    theme=gr.themes.Soft(
-        primary_hue="blue",
-        secondary_hue="cyan",
-        neutral_hue="slate"
-    ),
-    css=CSS,
     title="Ugandan Fuel Prediction Intel"
 ) as demo:
 
@@ -1058,7 +1052,12 @@ if __name__ == "__main__":
 
     demo.launch(
         server_name="127.0.0.1",
-        server_port=7860,
         share=False,
-        show_error=True
+        show_error=True,
+        theme=gr.themes.Soft(
+            primary_hue="blue",
+            secondary_hue="cyan",
+            neutral_hue="slate"
+        ),
+        css=CSS
     )
